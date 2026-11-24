@@ -20,7 +20,7 @@ const JWT_SECRET = process.env.JWT_SECRET;
 
 app.post("/register", async (req, res) => {
     try {
-        const { name, email, password } = req.body;
+        const { name, email, password, role } = req.body;
 
         // Check fields
         if (!name || !email || !password) {
@@ -39,6 +39,13 @@ app.post("/register", async (req, res) => {
                 message: "User already exists"
             });
         }
+        const allowedRoles = ["admin", "teacher", "student"];
+
+        if (!allowedRoles.includes(role)) {
+            return res.status(400).json({
+                message: "Invalid role"
+            });
+        }
 
         // Hash password
         const hashedPassword = await bcrypt.hash(password, 10);
@@ -48,7 +55,8 @@ app.post("/register", async (req, res) => {
             id: users.length + 1,
             name,
             email,
-            password: hashedPassword
+            password: hashedPassword,
+            role
         };
 
         users.push(newUser);
@@ -58,7 +66,8 @@ app.post("/register", async (req, res) => {
             user: {
                 id: newUser.id,
                 name: newUser.name,
-                email: newUser.email
+                email: newUser.email,
+                role: newUser.role
             }
         });
 
@@ -68,7 +77,39 @@ app.post("/register", async (req, res) => {
         });
     }
 });
+app.get("/users", (req, res) => {
 
+    res.json({
+        message: "All users",
+        users: users.map(user => ({
+            id: user.id,
+            name: user.name,
+            email: user.email,
+            role: user.role
+        }))
+    });
+
+});
+app.get("/users/:id", (req, res) => {
+
+    const id = Number(req.params.id);
+
+    const user = users.find(user => user.id === id);
+
+    if (!user) {
+        return res.status(404).json({
+            message: "User not found"
+        });
+    }
+
+    res.json({
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role
+    });
+
+});
 // --------------------------------
 // 2. LOGIN API
 // --------------------------------
@@ -102,7 +143,9 @@ app.post("/login", async (req, res) => {
 
         // Generate JWT
         const token = jwt.sign(
-            { id: user.id },
+            { id: user.id,
+              role: user.role
+             },
             JWT_SECRET,
             { expiresIn: "1d" }
         );
@@ -172,6 +215,96 @@ app.get("/profile", authenticate, (req, res) => {
             email: user.email
         }
     });
+});
+app.get("/users", (req, res) => {
+
+    res.json({
+        message: "All users",
+        users: users.map(user => ({
+            id: user.id,
+            name: user.name,
+            email: user.email,
+            role: user.role
+        }))
+    });
+
+});
+app.get("/users/:id", (req, res) => {
+
+    const id = Number(req.params.id);
+
+    const user = users.find(user => user.id === id);
+
+    if (!user) {
+        return res.status(404).json({
+            message: "User not found"
+        });
+    }
+
+    res.json({
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role
+    });
+
+});
+app.patch("/users/:id", (req, res) => {
+
+    const id = Number(req.params.id);
+
+    const user = users.find(user => user.id === id);
+
+    if (!user) {
+        return res.status(404).json({
+            message: "User not found"
+        });
+    }
+
+    const { name, email, role } = req.body;
+
+    if (name !== undefined) user.name = name;
+    if (email !== undefined) user.email = email;
+    if (role !== undefined) {
+        if (!["admin", "teacher", "student"].includes(role)) {
+            return res.status(400).json({
+                message: "Invalid role"
+            });
+        }
+        user.role = role;
+    }
+
+    res.json({
+        message: "User updated successfully",
+        user: {
+            id: user.id,
+            name: user.name,
+            email: user.email,
+            role: user.role
+        }
+    });
+
+});
+app.delete("/users/:id", (req, res) => {
+
+    const id = Number(req.params.id);
+
+    const userIndex = users.findIndex(
+        user => user.id === id
+    );
+
+    if (userIndex === -1) {
+        return res.status(404).json({
+            message: "User not found"
+        });
+    }
+
+    users.splice(userIndex, 1);
+
+    res.json({
+        message: "User deleted successfully"
+    });
+
 });
 
 // --------------------------------
