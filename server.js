@@ -77,7 +77,7 @@ app.post("/register", async (req, res) => {
         });
     }
 });
-app.get("/users", (req, res) => {
+app.get("/users", authenticate, authorizeRoles("admin"), (req, res) => {
 
     res.json({
         message: "All users",
@@ -90,7 +90,9 @@ app.get("/users", (req, res) => {
     });
 
 });
-app.get("/users/:id", (req, res) => {
+app.get("/users/:id", 
+    authenticate,
+    authorizeRoles("admin"),(req, res) => {
 
     const id = Number(req.params.id);
 
@@ -180,7 +182,19 @@ const authenticate = (req, res, next) => {
 
         const decoded = jwt.verify(token, JWT_SECRET);
 
-        req.user = decoded;
+        const user = users.find(user => user.id === decoded.id);
+
+        if (!user) {
+            return res.status(401).json({
+                message: "User not found"
+            });
+        }
+
+        req.user = {
+            id: user.id,
+            role: user.role
+        };
+
 
         next();
 
@@ -190,7 +204,20 @@ const authenticate = (req, res, next) => {
         });
     }
 };
+// ROLE AUTHORIZATION MIDDLEWARE
+const authorizeRoles = (...allowedRoles) => {
 
+    return (req, res, next) => {
+
+        if (!allowedRoles.includes(req.user.role)) {
+            return res.status(403).json({
+                message: "Access denied. You do not have permission."
+            });
+        }
+
+        next();
+    };
+};
 // --------------------------------
 // 4. PROTECTED PROFILE API
 // --------------------------------
@@ -216,24 +243,54 @@ app.get("/profile", authenticate, (req, res) => {
         }
     });
 });
-app.get("/users", (req, res) => {
 
-    res.json({
-        message: "All users",
-        users: users.map(user => ({
-            id: user.id,
-            name: user.name,
-            email: user.email,
-            role: user.role
-        }))
-    });
+// ADMIN UPDATE ANY USER
+app.patch(
+    "/users/:id",
+    authenticate,
+    authorizeRoles("admin"),
+    (req, res) => {
 
-});
-app.get("/users/:id", (req, res) => {
+        const id = Number(req.params.id);
 
-    const id = Number(req.params.id);
+        const user = users.find(user => user.id === id);
 
-    const user = users.find(user => user.id === id);
+        if (!user) {
+            return res.status(404).json({
+                message: "User not found"
+            });
+        }
+
+        const { name, email, role } = req.body;
+
+        if (name !== undefined) user.name = name;
+        if (email !== undefined) user.email = email;
+
+        if (role !== undefined) {
+            if (!["admin", "teacher", "student"].includes(role)) {
+                return res.status(400).json({
+                    message: "Invalid role"
+                });
+            }
+
+            user.role = role;
+        }
+
+        res.json({
+            message: "User updated successfully",
+            user: {
+                id: user.id,
+                name: user.name,
+                email: user.email,
+                role: user.role
+            }
+        });
+    }
+);
+// UPDATE OWN PROFILE
+app.patch("/users/me", authenticate, (req, res) => {
+
+    const user = users.find(user => user.id === req.user.id);
 
     if (!user) {
         return res.status(404).json({
@@ -241,41 +298,13 @@ app.get("/users/:id", (req, res) => {
         });
     }
 
-    res.json({
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        role: user.role
-    });
-
-});
-app.patch("/users/:id", (req, res) => {
-
-    const id = Number(req.params.id);
-
-    const user = users.find(user => user.id === id);
-
-    if (!user) {
-        return res.status(404).json({
-            message: "User not found"
-        });
-    }
-
-    const { name, email, role } = req.body;
+    const { name, email } = req.body;
 
     if (name !== undefined) user.name = name;
     if (email !== undefined) user.email = email;
-    if (role !== undefined) {
-        if (!["admin", "teacher", "student"].includes(role)) {
-            return res.status(400).json({
-                message: "Invalid role"
-            });
-        }
-        user.role = role;
-    }
 
     res.json({
-        message: "User updated successfully",
+        message: "Profile updated successfully",
         user: {
             id: user.id,
             name: user.name,
@@ -285,12 +314,10 @@ app.patch("/users/:id", (req, res) => {
     });
 
 });
-app.delete("/users/:id", (req, res) => {
-
-    const id = Number(req.params.id);
+app.delete("/users/me", authenticate, (req, res) => {
 
     const userIndex = users.findIndex(
-        user => user.id === id
+        user => user.id === req.user.id
     );
 
     if (userIndex === -1) {
@@ -302,11 +329,10 @@ app.delete("/users/:id", (req, res) => {
     users.splice(userIndex, 1);
 
     res.json({
-        message: "User deleted successfully"
+        message: "Your account has been deleted successfully"
     });
 
 });
-
 // --------------------------------
 // 5. START SERVER
 // --------------------------------
